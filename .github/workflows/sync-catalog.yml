@@ -12,13 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Require catalog token
+        id: token
         env:
           TOKEN: ${{ secrets.BLAZIUM_TEMPLATES_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "$TOKEN"
+          if [ -z "$TOKEN" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "BLAZIUM_TEMPLATES_TOKEN is not set, so this push did not open a catalog pull request."
+            exit 0
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
+        if: steps.token.outputs.present == 'true'
         with:
           repository: blazium-games/blazium-templates
           token: ${{ secrets.BLAZIUM_TEMPLATES_TOKEN }}
@@ -26,6 +33,7 @@ jobs:
           ref: master
 
       - name: Update lock and open pull request
+        if: steps.token.outputs.present == 'true'
         env:
           GH_TOKEN: ${{ secrets.BLAZIUM_TEMPLATES_TOKEN }}
           SHA: ${{ github.sha }}
