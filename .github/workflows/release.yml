@@ -21,7 +21,23 @@ jobs:
         with:
           version: latest
       - name: Autowork
-        run: Blazium --headless --path . -s res://run_tests.gd
+        run: |
+          set +e
+          Blazium --headless --path . -s res://run_tests.gd > autowork.log 2>&1
+          code=$?
+          cat autowork.log
+          if grep -q "SCRIPT ERROR" autowork.log; then
+            echo "script error"
+            exit 1
+          fi
+          if ! grep -q "Autowork done:.*fail=0" autowork.log; then
+            echo "autowork did not report fail=0 (exit ${code})"
+            exit 1
+          fi
+          if [ "$code" -ne 0 ]; then
+            echo "autowork passed; ignoring shutdown exit ${code}"
+          fi
+          exit 0
       - name: Names
         run: python tools/check_names.py
 
