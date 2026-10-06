@@ -56,6 +56,8 @@ jobs:
             ext: .x86_64
     steps:
       - uses: actions/checkout@v4
+      - name: Project file for the export action
+        run: cp project.blazium project.godot
       - uses: blazium-engine/export-blazium-game@master
         with:
           blazium-version: latest
