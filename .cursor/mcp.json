@@ -1,0 +1,12 @@
+{
+	"mcpServers": {
+		"blazium": {
+			"type": "http",
+			"url": "http://127.0.0.1:6506/mcp"
+		},
+		"blazium-game": {
+			"type": "http",
+			"url": "http://127.0.0.1:6507/mcp"
+		}
+	}
+}

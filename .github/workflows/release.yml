@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: blazium-engine/setup-blazium-engine@master
+        with:
+          version: latest
+      - name: Autowork
+        run: Blazium --headless --path . -s res://run_tests.gd
+      - name: Names
+        run: python tools/check_names.py
+
+  export:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows Desktop x86_64
+            artifact: windows-x86_64
+            ext: .exe
+          - platform: Linux x86_64
+            artifact: linux-x86_64
+            ext: .x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: blazium-engine/export-blazium-game@master
+        with:
+          blazium-version: latest
+          game-name: ${{ github.event.repository.name }}
+          platform-name: ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/${{ github.event.repository.name }}${{ matrix.ext }}
+
+  release:
+    needs: export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="build-${GITHUB_SHA::12}"
+          files=(dist/*/*)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            gh release create "$tag" "${files[@]}" --title "$tag" --notes "Windows and Linux exports from ${GITHUB_SHA}."
+          fi
