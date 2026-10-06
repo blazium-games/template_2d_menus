@@ -1,0 +1,69 @@
+name: Sync catalog
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require catalog token
+        env:
+          TOKEN: ${{ secrets.BLAZIUM_TEMPLATES_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$TOKEN"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: blazium-games/blazium-templates
+          token: ${{ secrets.BLAZIUM_TEMPLATES_TOKEN }}
+          path: catalog-repo
+          ref: master
+
+      - name: Update lock and open pull request
+        env:
+          GH_TOKEN: ${{ secrets.BLAZIUM_TEMPLATES_TOKEN }}
+          SHA: ${{ github.sha }}
+          NAME: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path("catalog-repo/catalog/starters.lock.json")
+          lock = json.loads(path.read_text(encoding="utf-8"))
+          name = os.environ["NAME"]
+          sha = os.environ["SHA"]
+          found = False
+          for entry in lock["starters"]:
+              if entry.get("name") == name:
+                  entry["sha"] = sha
+                  found = True
+                  break
+          if not found:
+              raise SystemExit(f"{name} is not in the lock file")
+          path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+          PY
+          cd catalog-repo
+          git add catalog/starters.lock.json
+          if git diff --cached --quiet; then
+            echo "lock already records ${SHA}"
+            exit 0
+          fi
+          git -c user.email="41898282+github-actions[bot]@users.noreply.github.com" -c user.name="github-actions[bot]" commit -m "Update ${NAME} to ${SHA::12}."
+          branch="sync/${NAME}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            git push origin --delete "$branch"
+          fi
+          git push origin "HEAD:${branch}"
+          existing="$(gh pr list --repo blazium-games/blazium-templates --head "$branch" --base master --state open --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            echo "updated PR ${existing}"
+            exit 0
+          fi
+          gh pr create --repo blazium-games/blazium-templates --base master --head "$branch" --title "Update ${NAME}" --body "Set ${NAME} to ${SHA} so the next catalog release publishes this commit."
